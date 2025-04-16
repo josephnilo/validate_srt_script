@@ -1,0 +1,87 @@
+# SRT Validator and Fixer
+
+A Python script to validate SubRip (`.srt`) subtitle files against common formatting and timing rules, with an option to automatically fix certain issues.
+
+## Features
+
+*   **Comprehensive Validation:**
+    *   Checks for correct subtitle numbering sequence.
+    *   Validates timecodes: Start time must be strictly less than end time.
+    *   Detects overlapping subtitles (subsequent subtitle starting before the previous one ends).
+    *   Checks subtitle duration against configurable minimum and maximum limits.
+    *   Validates content formatting:
+        *   Maximum characters per line.
+        *   Maximum number of lines per subtitle block.
+        *   Detects empty subtitle content blocks.
+    *   Performs a basic check for unclosed common HTML tags (`<i>`, `<b>`, `<u>`, `<font>`).
+    *   Handles SRT files with or without a Byte Order Mark (BOM).
+*   **Optional Auto-Fixing (`--fix`):**
+    *   Corrects sequential numbering.
+    *   Adjusts overlapping timecodes (shifts the start time of the overlapping subtitle).
+    *   Fixes basic formatting issues (removes carriage returns `\r`, collapses multiple blank lines, trims leading/trailing whitespace).
+*   **Flexible Input:** Processes a single `.srt` file or recursively scans an entire directory.
+*   **Configurable:** Validation parameters (line length, line count, duration limits) can be adjusted via command-line arguments.
+*   **Clear Reporting:** Lists all validation errors found, including file path, subtitle index, approximate line number, error type, and a descriptive message. Provides a summary at the end.
+
+## Requirements
+
+*   Python 3.7+
+*   Pipenv
+
+## Installation
+
+1.  Clone this repository:
+    ```bash
+    git clone <repository_url> # Replace with your repository URL
+    cd validate_srt_script
+    ```
+2.  Install dependencies using Pipenv:
+    ```bash
+    pipenv install
+    ```
+    This will create a virtual environment and install the required `srt` library.
+
+## Usage
+
+Always run the script using `pipenv run` to ensure it uses the correct virtual environment and dependencies.
+
+**Basic Validation:**
+
+```bash
+pipenv run python validate_srt.py <path_to_file.srt>
+```
+or
+```bash
+pipenv run python validate_srt.py <path_to_directory>
+```
+
+**Validate and Automatically Fix Issues:**
+
+```bash
+pipenv run python validate_srt.py --fix <path_to_file_or_directory>
+```
+*Note: Fixing modifies the `.srt` files in place. Make backups if necessary.*
+
+**Using Custom Validation Parameters:**
+
+```bash
+# Example: Allow 3 lines per subtitle and 50 chars per line
+pipenv run python validate_srt.py --max-lines-per-sub 3 --max-chars-per-line 50 <path>
+
+# Example: Set minimum duration to 0.5s and maximum to 10s
+pipenv run python validate_srt.py --min-duration-ms 500 --max-duration-ms 10000 <path>
+```
+
+**Get Help:**
+
+```bash
+pipenv run python validate_srt.py -h
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues for bugs, feature requests, or improvements. (You can add more specific contribution guidelines here if you like).
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 

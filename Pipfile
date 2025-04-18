@@ -4,11 +4,13 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-srt = "*"
 rich = "*"
 pytest = "*"
+srt = "*"
 
 [dev-packages]
+pre-commit = "*"
+ruff = "*"
 
 [requires]
 python_version = "3.13"

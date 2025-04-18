@@ -307,6 +307,8 @@ def process_srt_file(file_path: str, args: argparse.Namespace) -> Tuple[List[Val
     if content is None: # Should not happen if read_error is None, but safety check
          return [ValidationError(file_path, None, None, "Internal Error", "Failed to read content unexpectedly.")], []
 
+    # Temporarily remove try/except around validation for debugging
+    # try:
     validation_errors = validate_srt_content(
         file_path,
         content,
@@ -315,6 +317,9 @@ def process_srt_file(file_path: str, args: argparse.Namespace) -> Tuple[List[Val
         args.min_duration_ms,
         args.max_duration_ms
     )
+    # except Exception as e:
+    #      # Catch unexpected validation errors
+    #      validation_errors = [ValidationError(file_path, None, None, "Internal Validation Error", f"Unexpected error during validation: {e}")]
 
     fixes_applied: List[str] = []
     write_error: Optional[ValidationError] = None
@@ -323,13 +328,13 @@ def process_srt_file(file_path: str, args: argparse.Namespace) -> Tuple[List[Val
         rprint(f"Attempting to fix [cyan]{file_path}[/cyan]...")
         try:
             # Re-parse needed before fixing if initial validation found errors but didn't stop
-            # Use ignore_errors=True to try and salvage what can be parsed for fixing
-            subtitles_to_fix = list(srt.parse(content)) #, ignore_errors=True is not an option in lib, handle parse errors above
+            subtitles_to_fix = list(srt.parse(content))
             fixed_subtitles, fixes_applied = fix_srt_subtitles(subtitles_to_fix)
             if fixes_applied:
                  write_error = write_srt(file_path, fixed_subtitles)
                  if write_error:
-                     validation_errors.append(write_error) # Report write error along validation ones
+                     # If write fails, report it but keep original validation errors
+                     validation_errors.append(write_error)
                  else:
                       rprint(f"Fixes applied ([green]{', '.join(fixes_applied)}[/green]) to: [cyan]{file_path}[/cyan]")
             else:
@@ -341,25 +346,44 @@ def process_srt_file(file_path: str, args: argparse.Namespace) -> Tuple[List[Val
              validation_errors.append(fix_error)
              rprint(f"Error during fixing process for [cyan]{file_path}[/cyan]: {e}", file=sys.stderr)
 
-
     return validation_errors, fixes_applied # Return original validation errors, even if fix was attempted
 
 def process_path(input_path: str, args: argparse.Namespace) -> List[ValidationError]:
     """Processes a single file or all SRT files in a directory."""
     all_errors: List[ValidationError] = []
     files_processed = 0
-    files_fixed = 0
     files_with_errors = 0
+    files_fixed = 0
 
     if os.path.isfile(input_path):
         if input_path.lower().endswith('.srt'):
             rprint(f"Processing file: [cyan]{input_path}[/cyan]")
-            errors, fixes = process_srt_file(input_path, args)
-            all_errors.extend(errors)
+            errors = process_srt_file(input_path, args)[0] # Only get errors list
+            fixes = [] # Dummy value
+
             files_processed = 1
-            if fixes: files_fixed = 1
-            if errors and not (fixes and not any(e.error_type not in ["Timecode Fix", "Formatting Fix", "Numbering Fix"] for e in errors)): # Count errors if file wasn't fully fixed
-                 files_with_errors = 1
+            if errors:
+                 files_with_errors +=1
+                 all_errors.extend(errors)
+                 # Use sys.stdout.write for reliable output
+                 sys.stdout.write(f"Errors found in {input_path}:\n")
+                 for error in errors:
+                     line_info = f"L{error.line_number}" if error.line_number else "N/A"
+                     sub_info = f"Sub:{error.subtitle_index}" if error.subtitle_index is not None else "File-level"
+                     sys.stdout.write(f"  - [{sub_info} ({line_info})] {error.error_type}: {error.message}\n")
+                     if error.content and args.verbose:
+                         sys.stdout.write(f"    Content: {error.content[:100]}{'...' if len(error.content)>100 else ''}\n")
+                 sys.stdout.write("--- End Errors ---\n")
+
+            else:
+                 # Keep rich print for success
+                 rprint(f"[green]Validation passed for:[/green] {input_path}")
+
+            # Restore fix checking logic
+            if fixes:
+                 files_fixed += 1
+            print("") # Newline separation between files
+
         else:
             rprint(f"[yellow]Skipping non-SRT file:[/yellow] {input_path}", file=sys.stderr)
     elif os.path.isdir(input_path):
@@ -369,28 +393,40 @@ def process_path(input_path: str, args: argparse.Namespace) -> List[ValidationEr
                 if file.lower().endswith('.srt'):
                     file_path = os.path.join(root, file)
                     rprint(f"--- Processing: [cyan]{file_path}[/cyan] ---")
+                    # Restore original unpacking
                     errors, fixes = process_srt_file(file_path, args)
+                    # errors = process_srt_file(file_path, args)[0] # Only get errors list
+                    # fixes = [] # Dummy value
+
+                    # --- Remove Immediate Debug Check --- #
+                    # if errors:
+                    #      print(f"DEBUG: process_srt_file returned errors for {file_path}")
+                    # else:
+                    #      print(f"DEBUG: process_srt_file returned NO errors for {file_path}")
+                    # --- End Immediate Debug Check --- #
+
                     files_processed += 1
                     if errors:
                          files_with_errors +=1
                          all_errors.extend(errors)
-                         # Print errors immediately for the file
-                         rprint(f"[bold red]Errors found in {file_path}:[/bold red]")
+                         # Use sys.stdout.write for reliable output
+                         sys.stdout.write(f"Errors found in {file_path}:\n")
                          for error in errors:
                              line_info = f"L{error.line_number}" if error.line_number else "N/A"
                              sub_info = f"Sub:{error.subtitle_index}" if error.subtitle_index is not None else "File-level"
-                             rprint(f"  - [yellow][{sub_info} ({line_info})][/yellow] [red]{error.error_type}[/red]: {error.message}")
+                             sys.stdout.write(f"  - [{sub_info} ({line_info})] {error.error_type}: {error.message}\n")
                              if error.content and args.verbose:
-                                 escaped_content = rich.markup.escape(error.content[:100])
-                                 rprint(f"    [dim]Content:[/dim] {escaped_content}{'...' if len(error.content)>100 else ''}")
-                         rprint("--- End Errors ---")
+                                 sys.stdout.write(f"    Content: {error.content[:100]}{'...' if len(error.content)>100 else ''}\n")
+                         sys.stdout.write("--- End Errors ---\n")
 
                     else:
+                         # Keep rich print for success
                          rprint(f"[green]Validation passed for:[/green] {file_path}")
 
+                    # Restore fix checking logic
                     if fixes:
                          files_fixed += 1
-                    print("") # Keep standard print for newline separation
+                    print("") # Newline separation between files
 
     else:
         rprint(f"[bold red]Error:[/bold red] Input path not found: {input_path}", file=sys.stderr)
@@ -402,6 +438,7 @@ def process_path(input_path: str, args: argparse.Namespace) -> List[ValidationEr
     rprint("\n[bold]--- Validation Summary ---[/bold]")
     rprint(f"Files Processed: {files_processed}")
     rprint(f"Files with Errors: {files_with_errors}")
+    # Restore fix count reporting
     if args.fix:
         rprint(f"Files Modified by Fixing: {files_fixed}")
 

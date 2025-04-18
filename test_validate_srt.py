@@ -493,6 +493,38 @@ def test_process_path_non_existent(tmp_path, default_args):
      assert all_errors[0].error_type == "Path Error"
      assert "not a valid file or directory" in all_errors[0].message
 
+def test_process_path_directory_output(tmp_path, valid_srt_content, overlapping_srt_content, default_args, capsys):
+    """Test that process_path prints error details correctly to stdout."""
+    d = tmp_path / "srt_dir_output"
+    d.mkdir()
+    p_overlap = d / "overlap.srt"
+    p_overlap.write_text(overlapping_srt_content, encoding='utf-8')
+
+    default_args.input_path = str(d)
+    default_args.fix = False # Ensure fix is off for error reporting
+    default_args.verbose = True # Enable verbose for content check
+
+    # Run the processing function that prints
+    process_path(str(d), default_args)
+
+    # Capture the printed output
+    captured = capsys.readouterr()
+    stdout = captured.out
+
+    # Check for key parts of the expected output, ignoring rich markup and exact paths
+    assert "Processing directory:" in stdout
+    assert "Processing:" in stdout # Check the file processing line marker
+    assert "overlap.srt" in stdout # Check if the filename appears
+    assert "Errors found in" in stdout
+    assert "[Sub:2 (L5)]" in stdout # Check subtitle/line info marker
+    assert "Timecode Error" in stdout # Check error type
+    assert "Overlaps with previous subtitle" in stdout # Check error message fragment
+    assert "Content:" not in stdout # Verbose content still shouldn't be there
+    assert "--- End Errors ---" in stdout
+    assert "--- Validation Summary ---" in stdout
+    assert "Files Processed: 1" in stdout
+    assert "Files with Errors: 1" in stdout
+
 # --- Argparse / Main Tests (Very basic) ---
 # More comprehensive tests would involve subprocess calls to check main() output and exit codes
 

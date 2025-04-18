@@ -379,10 +379,8 @@ def process_path(input_path: str, args: argparse.Namespace) -> List[ValidationEr
                          for error in errors:
                              line_info = f"L{error.line_number}" if error.line_number else "N/A"
                              sub_info = f"Sub:{error.subtitle_index}" if error.subtitle_index is not None else "File-level"
-                             # Use rich formatting for error messages
                              rprint(f"  - [yellow][{sub_info} ({line_info})][/yellow] [red]{error.error_type}[/red]: {error.message}")
                              if error.content and args.verbose:
-                                 # Escape content for rich tags
                                  escaped_content = rich.markup.escape(error.content[:100])
                                  rprint(f"    [dim]Content:[/dim] {escaped_content}{'...' if len(error.content)>100 else ''}")
                          rprint("--- End Errors ---")

@@ -21,7 +21,8 @@ A Python script to validate SubRip (`.srt`) subtitle files against common format
     *   Fixes basic formatting issues (removes carriage returns `\r`, collapses multiple blank lines, trims leading/trailing whitespace).
 *   **Flexible Input:** Processes a single `.srt` file or recursively scans an entire directory.
 *   **Configurable:** Validation parameters (line length, line count, duration limits) can be adjusted via command-line arguments.
-*   **Clear Reporting:** Lists all validation errors found, including file path, subtitle index, approximate line number, error type, and a descriptive message. Provides a summary at the end.
+*   **Clear Reporting:** Lists all validation errors found, including file path, subtitle index, and error type. Critical, unfixable errors are highlighted in red.
+*   **Standard Exit Codes:** Returns exit code `0` on success and `1` on failure, suitable for CI/CD pipelines.
 
 ## Requirements
 
@@ -78,10 +79,22 @@ pipenv run python validate_srt.py --min-duration-ms 500 --max-duration-ms 10000 
 pipenv run python validate_srt.py -h
 ```
 
+## Project Structure
+
+The project has been refactored for better maintainability:
+
+*   `validate_srt.py`: The main command-line interface and entry point.
+*   `validator/`: A package containing the core logic.
+    *   `models.py`: Defines the `ValidationError` data class.
+    *   `io.py`: Handles file reading and writing.
+    *   `rules.py`: Contains all the validation logic.
+    *   `fixer.py`: Contains the auto-fixing logic.
+*   `test_validate_srt.py`: Contains the `pytest` unit tests for all functionality.
+
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests or open issues for bugs, feature requests, or improvements. (You can add more specific contribution guidelines here if you like).
+Contributions are welcome! Please feel free to submit pull requests or open issues for bugs, feature requests, or improvements.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

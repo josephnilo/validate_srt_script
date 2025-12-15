@@ -1,9 +1,10 @@
-iniconfig==2.1.0
-markdown-it-py==3.0.0
-mdurl==0.1.2
-packaging==24.2
-pluggy==1.5.0
-pygments==2.19.1
-pytest==8.3.5
-rich==14.0.0
-srt==3.5.3
+-i https://pypi.org/simple
+iniconfig==2.3.0; python_version >= '3.10'
+markdown-it-py==4.0.0; python_version >= '3.10'
+mdurl==0.1.2; python_version >= '3.7'
+packaging==25.0; python_version >= '3.8'
+pluggy==1.6.0; python_version >= '3.9'
+pygments==2.19.2; python_version >= '3.8'
+pytest==9.0.2; python_version >= '3.10'
+rich==14.2.0; python_full_version >= '3.8.0'
+srt==3.5.3; python_version >= '2.7'

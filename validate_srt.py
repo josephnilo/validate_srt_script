@@ -110,7 +110,19 @@ def process_srt_file(
                     rprint(
                         f"Fixes applied ([green]{', '.join(fixes_applied)}[/green]) to: [cyan]{escape_markup(file_path)}[/cyan]"
                     )
-                    fixed_content = srt.compose(fixed_subtitles)
+                    fixed_content, reread_error = read_srt_content(file_path)
+                    if reread_error:
+                        return [reread_error], fixes_applied
+                    if fixed_content is None:
+                        return [
+                            ValidationError(
+                                file_path,
+                                None,
+                                None,
+                                "Internal Error",
+                                "Failed to read content after writing unexpectedly.",
+                            )
+                        ], fixes_applied
                     validation_errors = validate_srt_content(
                         file_path,
                         fixed_content,

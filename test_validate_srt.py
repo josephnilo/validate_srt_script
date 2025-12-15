@@ -995,3 +995,26 @@ def test_write_srt_file(tmp_path, valid_srt_content):
     error = write_srt(str(p), subs)
     assert error is None
     assert p.read_text(encoding="utf-8").strip() == valid_srt_content.strip()
+
+
+def test_write_srt_preserves_subtitle_indices(tmp_path):
+    p = tmp_path / "nonsequential.srt"
+    subs = [
+        srt.Subtitle(
+            index=10,
+            start=timedelta(seconds=1),
+            end=timedelta(seconds=2),
+            content="A",
+        ),
+        srt.Subtitle(
+            index=20,
+            start=timedelta(seconds=3),
+            end=timedelta(seconds=4),
+            content="B",
+        ),
+    ]
+    error = write_srt(str(p), subs)
+    assert error is None
+
+    parsed = list(srt.parse(p.read_text(encoding="utf-8")))
+    assert [s.index for s in parsed] == [10, 20]

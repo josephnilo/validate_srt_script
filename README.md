@@ -27,7 +27,7 @@ A Python script to validate SubRip (`.srt`) subtitle files against common format
 
 ## Requirements
 
-*   Python 3.7+
+*   Python 3.10+ (Pipfile targets Python 3.13)
 *   Pipenv
 
 ## Installation

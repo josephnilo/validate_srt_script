@@ -25,7 +25,7 @@ def write_srt(
 ) -> Optional[ValidationError]:
     """Writes SRT subtitles to a file."""
     try:
-        content_to_write = srt.compose(subtitles)  # Keep original index during compose
+        content_to_write = srt.compose(subtitles, reindex=False)
         with open(file_path, "w", encoding="utf-8") as file:
             file.write(content_to_write)
         return None

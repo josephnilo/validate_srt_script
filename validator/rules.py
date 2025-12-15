@@ -276,10 +276,11 @@ def validate_srt_content(
                         ValidationError(
                             file_path,
                             sub.index,
-                            start_line + i + 1 if start_line else None,
+                            start_line + i + 2 if start_line else None,
                             "Format Error",
                             f"Line exceeds maximum characters ({len(line_no_tags)} > {max_chars_per_line}).",
                             line,
+                            severity="warning",
                         )
                     )
 

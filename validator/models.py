@@ -8,3 +8,4 @@ class ValidationError(NamedTuple):
     error_type: str
     message: str
     content: Optional[str] = None  # problematic content/line
+    severity: str = "error"  # "error" or "warning"

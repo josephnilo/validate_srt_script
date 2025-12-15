@@ -555,6 +555,8 @@ def test_validate_too_long_line(too_long_line_srt_content, default_args):
     assert errors[0].error_type == "Format Error"
     assert "maximum characters" in errors[0].message
     assert errors[0].subtitle_index == 1
+    assert errors[0].severity == "warning"
+    assert errors[0].line_number == 3
 
 
 def test_validate_duration_short(duration_too_short_srt_content, default_args):
@@ -722,10 +724,8 @@ def test_process_file_with_fix(tmp_path, overlapping_srt_content, default_args):
 
     errors, fixes = process_srt_file(str(p), default_args)
 
-    # Errors should still report the *original* validation errors found
-    assert len(errors) == 1
-    assert errors[0].error_type == "Timecode Error"
-    assert errors[0].subtitle_index == 2
+    # After fixing, the file should re-validate cleanly.
+    assert not errors
 
     # Check that fixes were applied
     assert "Timecode Fix" in fixes
@@ -833,6 +833,44 @@ def test_process_path_specific_file_output(
     # We check for a substring now, as rich may add formatting
     assert "Errors found in" in stdout
     assert "Exceeds maximum lines" in stdout
+
+
+def test_process_path_escapes_rich_markup_in_file_path(
+    tmp_path, overlapping_srt_content, default_args, capsys
+):
+    p = tmp_path / "weird[red]name.srt"
+    p.write_text(overlapping_srt_content, encoding="utf-8")
+
+    default_args.input_path = str(p)
+    default_args.fix = False
+    default_args.verbose = False
+
+    process_path(str(p), default_args)
+    stdout = capsys.readouterr().out
+
+    assert "weird[red]name.srt" in stdout
+
+
+def test_process_path_escapes_rich_markup_in_verbose_content(
+    tmp_path, default_args, capsys
+):
+    srt_content = """1
+00:00:01,000 --> 00:00:03,000
+Line 1 [red]X[/red]
+Line 2
+Line 3
+"""
+    p = tmp_path / "content_markup.srt"
+    p.write_text(srt_content, encoding="utf-8")
+
+    default_args.input_path = str(p)
+    default_args.fix = False
+    default_args.verbose = True
+
+    process_path(str(p), default_args)
+    stdout = capsys.readouterr().out
+
+    assert "[red]X[/red]" in stdout
 
 
 # --- Argparse / Main Tests (Very basic) ---

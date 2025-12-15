@@ -19,10 +19,11 @@ A Python script to validate SubRip (`.srt`) subtitle files against common format
     *   Corrects sequential numbering.
     *   Adjusts overlapping timecodes (shifts the start time of the overlapping subtitle).
     *   Fixes basic formatting issues (removes carriage returns `\r`, collapses multiple blank lines, trims leading/trailing whitespace).
+    *   Re-validates after fixing and fails if errors remain.
 *   **Flexible Input:** Processes a single `.srt` file or recursively scans an entire directory.
 *   **Configurable:** Validation parameters (line length, line count, duration limits) can be adjusted via command-line arguments.
 *   **Clear Reporting:** Lists all validation errors found, including file path, subtitle index, and error type. Critical, unfixable errors are highlighted in red.
-*   **Standard Exit Codes:** Returns exit code `0` on success and `1` on failure, suitable for CI/CD pipelines.
+*   **Standard Exit Codes:** Returns exit code `0` when no errors are found (warnings do not fail by default) and `1` when errors are found. Use `--warnings-as-errors` to make warnings fail.
 
 ## Requirements
 
@@ -71,6 +72,12 @@ pipenv run python validate_srt.py --max-lines-per-sub 3 --max-chars-per-line 50 
 
 # Example: Set minimum duration to 0.5s and maximum to 10s
 pipenv run python validate_srt.py --min-duration-ms 500 --max-duration-ms 10000 <path>
+```
+
+**Fail on Warnings:**
+
+```bash
+pipenv run python validate_srt.py --warnings-as-errors <path>
 ```
 
 **Get Help:**

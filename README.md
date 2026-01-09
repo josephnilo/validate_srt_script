@@ -88,6 +88,14 @@ pipenv run python validate_srt.py --no-color <path>
 
 You can also set the `NO_COLOR` environment variable to disable color output.
 
+**JSON Output:**
+
+```bash
+pipenv run python validate_srt.py --json <path>
+```
+
+Use `--verbose` to include issue content in the JSON output.
+
 **Get Help:**
 
 ```bash

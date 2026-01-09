@@ -1,8 +1,12 @@
+import argparse
+import io
+import json
 import os
 import sys
+from dataclasses import dataclass
+from typing import List, Optional, TextIO, Tuple
+
 import srt
-import argparse
-from typing import List, Tuple, Optional, TextIO
 from rich.console import Console
 from rich.markup import escape as escape_markup
 
@@ -28,9 +32,63 @@ CRITICAL_ERROR_TYPES = {
 }
 
 
+@dataclass
+class ValidationSummary:
+    files_processed: int = 0
+    files_with_errors: int = 0
+    files_with_warnings: int = 0
+    files_fixed: int = 0
+
+
 def build_console(no_color: bool, file: Optional[TextIO] = None) -> Console:
     force_terminal = False if no_color else None
     return Console(no_color=no_color, file=file, force_terminal=force_terminal)
+
+
+def validation_error_to_dict(
+    error: ValidationError, include_content: bool
+) -> dict[str, Optional[object]]:
+    return {
+        "file_path": error.file_path,
+        "subtitle_index": error.subtitle_index,
+        "line_number": error.line_number,
+        "error_type": error.error_type,
+        "message": error.message,
+        "severity": error.severity,
+        "content": error.content if include_content else None,
+        "is_breaking": error.error_type in CRITICAL_ERROR_TYPES,
+    }
+
+
+def build_json_report(
+    *,
+    input_path: str,
+    issues: List[ValidationError],
+    summary: ValidationSummary,
+    warnings_as_errors: bool,
+    fail_on_warnings: bool,
+    fix: bool,
+    verbose: bool,
+    exit_code: int,
+) -> dict[str, object]:
+    errors = [issue for issue in issues if issue.severity == "error"]
+    warnings = [issue for issue in issues if issue.severity == "warning"]
+    return {
+        "input_path": input_path,
+        "files_processed": summary.files_processed,
+        "files_with_errors": summary.files_with_errors,
+        "files_with_warnings": summary.files_with_warnings,
+        "files_fixed": summary.files_fixed,
+        "error_count": len(errors),
+        "warning_count": len(warnings),
+        "warnings_as_errors": warnings_as_errors,
+        "fail_on_warnings": fail_on_warnings,
+        "fix": fix,
+        "exit_code": exit_code,
+        "issues": [
+            validation_error_to_dict(issue, include_content=verbose) for issue in issues
+        ],
+    }
 
 
 def print_validation_errors(
@@ -166,12 +224,14 @@ def process_srt_file(
 def process_path(
     input_path: str,
     args: argparse.Namespace,
+    summary: Optional[ValidationSummary] = None,
     console: Optional[Console] = None,
     err_console: Optional[Console] = None,
 ) -> List[ValidationError]:
     """Processes a single file or all SRT files in a directory."""
     console = console or Console()
     err_console = err_console or Console(file=sys.stderr)
+    summary = summary or ValidationSummary()
     all_errors: List[ValidationError] = []
     files_to_process: List[str] = []
 
@@ -202,14 +262,9 @@ def process_path(
             )
         ]
 
-    files_processed = 0
-    files_with_errors = 0
-    files_with_warnings = 0
-    files_fixed = 0
-
     for file_path in files_to_process:
         console.print(f"--- Processing: [cyan]{escape_markup(file_path)}[/cyan] ---")
-        files_processed += 1
+        summary.files_processed += 1
 
         errors, fixes = process_srt_file(
             file_path, args, console=console, err_console=err_console
@@ -218,11 +273,11 @@ def process_path(
         has_warnings = any(error.severity == "warning" for error in errors)
 
         if has_errors:
-            files_with_errors += 1
+            summary.files_with_errors += 1
             all_errors.extend(errors)
             print_validation_errors(errors, file_path, args.verbose, console=console)
         elif has_warnings:
-            files_with_warnings += 1
+            summary.files_with_warnings += 1
             all_errors.extend(errors)
             print_validation_errors(errors, file_path, args.verbose, console=console)
         else:
@@ -231,16 +286,16 @@ def process_path(
             )
 
         if fixes:
-            files_fixed += 1
+            summary.files_fixed += 1
 
         console.print("")
 
     console.print("\n[bold]--- Validation Summary ---[/bold]")
-    console.print(f"Files Processed: {files_processed}")
-    console.print(f"Files with Errors: {files_with_errors}")
-    console.print(f"Files with Warnings: {files_with_warnings}")
+    console.print(f"Files Processed: {summary.files_processed}")
+    console.print(f"Files with Errors: {summary.files_with_errors}")
+    console.print(f"Files with Warnings: {summary.files_with_warnings}")
     if args.fix:
-        console.print(f"Files Modified by Fixing: {files_fixed}")
+        console.print(f"Files Modified by Fixing: {summary.files_fixed}")
     console.print("[bold]--- End Summary ---[/bold]")
 
     return all_errors
@@ -291,6 +346,11 @@ def main():
         help="Return a failing exit code if warnings are found.",
     )
     parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON to stdout.",
+    )
+    parser.add_argument(
         "--no-color",
         action="store_true",
         default=os.environ.get("NO_COLOR") is not None,
@@ -302,6 +362,39 @@ def main():
         sys.exit(1)
 
     args = parser.parse_args()
+    if args.json:
+        args.no_color = True
+
+        null_stream = io.StringIO()
+        console = build_console(True, file=null_stream)
+        err_console = build_console(True, file=null_stream)
+        summary = ValidationSummary()
+
+        all_issues = process_path(
+            args.input_path,
+            args,
+            summary=summary,
+            console=console,
+            err_console=err_console,
+        )
+        errors = [issue for issue in all_issues if issue.severity == "error"]
+        warnings = [issue for issue in all_issues if issue.severity == "warning"]
+        fail_on_warnings = args.warnings_as_errors and bool(warnings)
+        exit_code = 0 if not errors and not fail_on_warnings else 1
+
+        report = build_json_report(
+            input_path=args.input_path,
+            issues=all_issues,
+            summary=summary,
+            warnings_as_errors=args.warnings_as_errors,
+            fail_on_warnings=fail_on_warnings,
+            fix=args.fix,
+            verbose=args.verbose,
+            exit_code=exit_code,
+        )
+        print(json.dumps(report))
+        sys.exit(exit_code)
+
     console = build_console(args.no_color)
     err_console = build_console(args.no_color, file=sys.stderr)
 

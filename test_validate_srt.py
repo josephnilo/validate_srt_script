@@ -21,10 +21,12 @@ from validator.rules import validate_srt_content
 from validator.fixer import fix_srt_subtitles
 from validator.io import read_srt_content, write_srt
 from validate_srt import (
+    ValidationSummary,
+    build_console,
+    build_json_report,
     process_srt_file,
     process_path,
     print_validation_errors,
-    build_console,
     DEFAULT_MAX_CHARS_PER_LINE,
     DEFAULT_MAX_LINES_PER_SUB,
     DEFAULT_MIN_SUB_DURATION_MS,
@@ -981,6 +983,39 @@ def test_print_errors_no_color():
 
     output = string_io.getvalue()
     assert "\x1b[" not in output
+
+
+def test_build_json_report_counts():
+    summary = ValidationSummary(
+        files_processed=2, files_with_errors=1, files_with_warnings=1, files_fixed=0
+    )
+    issues = [
+        ValidationError("a.srt", 1, 1, "Parsing Error", "Bad parse.", "x"),
+        ValidationError(
+            "b.srt",
+            2,
+            2,
+            "Format Error",
+            "Too long.",
+            "y",
+            severity="warning",
+        ),
+    ]
+    report = build_json_report(
+        input_path=".",
+        issues=issues,
+        summary=summary,
+        warnings_as_errors=False,
+        fail_on_warnings=False,
+        fix=False,
+        verbose=False,
+        exit_code=1,
+    )
+
+    assert report["files_processed"] == 2
+    assert report["error_count"] == 1
+    assert report["warning_count"] == 1
+    assert report["issues"][0]["content"] is None
 
 
 # -- I/O Function Tests --

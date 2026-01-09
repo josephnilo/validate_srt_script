@@ -80,6 +80,14 @@ pipenv run python validate_srt.py --min-duration-ms 500 --max-duration-ms 10000 
 pipenv run python validate_srt.py --warnings-as-errors <path>
 ```
 
+**Disable Color Output:**
+
+```bash
+pipenv run python validate_srt.py --no-color <path>
+```
+
+You can also set the `NO_COLOR` environment variable to disable color output.
+
 **Get Help:**
 
 ```bash

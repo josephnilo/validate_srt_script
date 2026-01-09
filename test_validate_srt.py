@@ -23,6 +23,8 @@ from validator.io import read_srt_content, write_srt
 from validate_srt import (
     process_srt_file,
     process_path,
+    print_validation_errors,
+    build_console,
     DEFAULT_MAX_CHARS_PER_LINE,
     DEFAULT_MAX_LINES_PER_SUB,
     DEFAULT_MIN_SUB_DURATION_MS,
@@ -946,12 +948,7 @@ def test_print_errors_critical():
     string_io = StringIO()
     console = Console(file=string_io, force_terminal=True, color_system="truecolor")
 
-    # We need a modified print_validation_errors that can accept a console instance,
-    # or we replicate the logic here for simplicity. Let's do the latter.
-    error = errors[0]
-    is_critical = error.error_type in {"Parsing Error"}  # Simplified for test
-    color = "bold red" if is_critical else "yellow"
-    console.print(f"[{color}]{error.message}[/{color}]")
+    print_validation_errors(errors, "test.srt", verbose=False, console=console)
 
     output = string_io.getvalue()
     assert "\x1b[1;31m" in output  # Check for red color ANSI escape code
@@ -965,14 +962,25 @@ def test_print_errors_non_critical():
     string_io = StringIO()
     console = Console(file=string_io, force_terminal=True, color_system="truecolor")
 
-    error = errors[0]
-    is_critical = error.error_type in {"Parsing Error"}  # Simplified for test
-    color = "bold red" if is_critical else "yellow"
-    console.print(f"[{color}]{error.message}[/{color}]")
+    print_validation_errors(errors, "test.srt", verbose=False, console=console)
 
     output = string_io.getvalue()
     assert "\x1b[33m" in output  # Check for yellow color ANSI escape code
     assert "\x1b[1;31m" not in output  # Ensure red is not present
+
+
+def test_print_errors_no_color():
+    """Test if no-color output avoids ANSI escape codes."""
+    errors = [
+        ValidationError("test.srt", 1, 10, "Index Error", "Wrong index.", "10<-->11")
+    ]
+    string_io = StringIO()
+    console = build_console(no_color=True, file=string_io)
+
+    print_validation_errors(errors, "test.srt", verbose=False, console=console)
+
+    output = string_io.getvalue()
+    assert "\x1b[" not in output
 
 
 # -- I/O Function Tests --

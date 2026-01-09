@@ -2,8 +2,8 @@ import os
 import sys
 import srt
 import argparse
-from typing import List, Tuple
-from rich import print as rprint
+from typing import List, Tuple, Optional, TextIO
+from rich.console import Console
 from rich.markup import escape as escape_markup
 
 from validator.models import ValidationError
@@ -28,20 +28,26 @@ CRITICAL_ERROR_TYPES = {
 }
 
 
+def build_console(no_color: bool, file: Optional[TextIO] = None) -> Console:
+    force_terminal = False if no_color else None
+    return Console(no_color=no_color, file=file, force_terminal=force_terminal)
+
+
 def print_validation_errors(
-    errors: List[ValidationError], file_path: str, verbose: bool
+    errors: List[ValidationError],
+    file_path: str,
+    verbose: bool,
+    console: Optional[Console] = None,
 ):
     """Prints validation issues using rich formatting."""
+    console = console or Console()
     has_errors = any(error.severity == "error" for error in errors)
     header = "Errors found in" if has_errors else "Warnings found in"
-    rprint(f"[bold]{header} [cyan]{escape_markup(file_path)}[/cyan]:[/bold]")
+    console.print(f"[bold]{header} [cyan]{escape_markup(file_path)}[/cyan]:[/bold]")
 
     for error in errors:
-        if error.severity == "warning":
-            color = "yellow"
-        else:
-            is_critical = error.error_type in CRITICAL_ERROR_TYPES
-            color = "bold red" if is_critical else "red"
+        is_breaking = error.error_type in CRITICAL_ERROR_TYPES
+        color = "bold red" if is_breaking else "yellow"
 
         line_info = f"L{error.line_number}" if error.line_number else "N/A"
         sub_info = (
@@ -52,20 +58,25 @@ def print_validation_errors(
 
         label = escape_markup(f"[{sub_info} ({line_info})]")
         message = escape_markup(error.message)
-        rprint(f"  - [{color}]{label} {error.error_type}: {message}[/{color}]")
+        console.print(f"  - [{color}]{label} {error.error_type}: {message}[/{color}]")
         if error.content and verbose:
             content_preview = error.content.replace("\n", " ")
             content_label = escape_markup(
                 f"Content: {content_preview[:100]}{'...' if len(content_preview) > 100 else ''}"
             )
-            rprint(f"    [{color}]{content_label}[/{color}]")
-    rprint("[bold]--- End Errors ---[/bold]")
+            console.print(f"    [{color}]{content_label}[/{color}]")
+    console.print("[bold]--- End Errors ---[/bold]")
 
 
 def process_srt_file(
-    file_path: str, args: argparse.Namespace
+    file_path: str,
+    args: argparse.Namespace,
+    console: Optional[Console] = None,
+    err_console: Optional[Console] = None,
 ) -> Tuple[List[ValidationError], List[str]]:
     """Validates and optionally fixes a single SRT file."""
+    console = console or Console()
+    err_console = err_console or Console(file=sys.stderr)
     content, read_error = read_srt_content(file_path)
     if read_error:
         return [read_error], []
@@ -98,7 +109,7 @@ def process_srt_file(
     )
 
     if args.fix and has_errors and not has_blocking_errors:
-        rprint(f"Attempting to fix [cyan]{escape_markup(file_path)}[/cyan]...")
+        console.print(f"Attempting to fix [cyan]{escape_markup(file_path)}[/cyan]...")
         try:
             subtitles_to_fix = list(srt.parse(content))
             fixed_subtitles, fixes_applied = fix_srt_subtitles(subtitles_to_fix)
@@ -107,7 +118,7 @@ def process_srt_file(
                 if write_error:
                     validation_errors.append(write_error)
                 else:
-                    rprint(
+                    console.print(
                         f"Fixes applied ([green]{', '.join(fixes_applied)}[/green]) to: [cyan]{escape_markup(file_path)}[/cyan]"
                     )
                     fixed_content, reread_error = read_srt_content(file_path)
@@ -132,7 +143,7 @@ def process_srt_file(
                         args.max_duration_ms,
                     )
             else:
-                rprint(
+                console.print(
                     f"No automatic fixes applied for: [cyan]{escape_markup(file_path)}[/cyan]"
                 )
         except Exception as e:
@@ -145,16 +156,22 @@ def process_srt_file(
                 content[:500],
             )
             validation_errors.append(fix_error)
-            rprint(
+            err_console.print(
                 f"Error during fixing process for [cyan]{escape_markup(file_path)}[/cyan]: {escape_markup(str(e))}",
-                file=sys.stderr,
             )
 
     return validation_errors, fixes_applied
 
 
-def process_path(input_path: str, args: argparse.Namespace) -> List[ValidationError]:
+def process_path(
+    input_path: str,
+    args: argparse.Namespace,
+    console: Optional[Console] = None,
+    err_console: Optional[Console] = None,
+) -> List[ValidationError]:
     """Processes a single file or all SRT files in a directory."""
+    console = console or Console()
+    err_console = err_console or Console(file=sys.stderr)
     all_errors: List[ValidationError] = []
     files_to_process: List[str] = []
 
@@ -162,20 +179,18 @@ def process_path(input_path: str, args: argparse.Namespace) -> List[ValidationEr
         if input_path.lower().endswith(".srt"):
             files_to_process.append(input_path)
         else:
-            rprint(
+            err_console.print(
                 f"[yellow]Skipping non-SRT file:[/yellow] {escape_markup(input_path)}",
-                file=sys.stderr,
             )
     elif os.path.isdir(input_path):
-        rprint(f"Processing directory: [cyan]{escape_markup(input_path)}[/cyan]")
+        console.print(f"Processing directory: [cyan]{escape_markup(input_path)}[/cyan]")
         for root, _, files in os.walk(input_path):
             for file in sorted(files):
                 if file.lower().endswith(".srt"):
                     files_to_process.append(os.path.join(root, file))
     else:
-        rprint(
+        err_console.print(
             f"[bold red]Error:[/bold red] Input path not found: {escape_markup(input_path)}",
-            file=sys.stderr,
         )
         return [
             ValidationError(
@@ -193,36 +208,40 @@ def process_path(input_path: str, args: argparse.Namespace) -> List[ValidationEr
     files_fixed = 0
 
     for file_path in files_to_process:
-        rprint(f"--- Processing: [cyan]{escape_markup(file_path)}[/cyan] ---")
+        console.print(f"--- Processing: [cyan]{escape_markup(file_path)}[/cyan] ---")
         files_processed += 1
 
-        errors, fixes = process_srt_file(file_path, args)
+        errors, fixes = process_srt_file(
+            file_path, args, console=console, err_console=err_console
+        )
         has_errors = any(error.severity == "error" for error in errors)
         has_warnings = any(error.severity == "warning" for error in errors)
 
         if has_errors:
             files_with_errors += 1
             all_errors.extend(errors)
-            print_validation_errors(errors, file_path, args.verbose)
+            print_validation_errors(errors, file_path, args.verbose, console=console)
         elif has_warnings:
             files_with_warnings += 1
             all_errors.extend(errors)
-            print_validation_errors(errors, file_path, args.verbose)
+            print_validation_errors(errors, file_path, args.verbose, console=console)
         else:
-            rprint(f"[green]Validation passed for:[/green] {escape_markup(file_path)}")
+            console.print(
+                f"[green]Validation passed for:[/green] {escape_markup(file_path)}"
+            )
 
         if fixes:
             files_fixed += 1
 
-        print("")
+        console.print("")
 
-    rprint("\n[bold]--- Validation Summary ---[/bold]")
-    rprint(f"Files Processed: {files_processed}")
-    rprint(f"Files with Errors: {files_with_errors}")
-    rprint(f"Files with Warnings: {files_with_warnings}")
+    console.print("\n[bold]--- Validation Summary ---[/bold]")
+    console.print(f"Files Processed: {files_processed}")
+    console.print(f"Files with Errors: {files_with_errors}")
+    console.print(f"Files with Warnings: {files_with_warnings}")
     if args.fix:
-        rprint(f"Files Modified by Fixing: {files_fixed}")
-    rprint("[bold]--- End Summary ---[/bold]")
+        console.print(f"Files Modified by Fixing: {files_fixed}")
+    console.print("[bold]--- End Summary ---[/bold]")
 
     return all_errors
 
@@ -271,33 +290,43 @@ def main():
         action="store_true",
         help="Return a failing exit code if warnings are found.",
     )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        default=os.environ.get("NO_COLOR") is not None,
+        help="Disable colorized output (also respects NO_COLOR).",
+    )
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
         sys.exit(1)
 
     args = parser.parse_args()
+    console = build_console(args.no_color)
+    err_console = build_console(args.no_color, file=sys.stderr)
 
     if os.path.exists("Pipfile") and "PIPENV_ACTIVE" not in os.environ:
-        rprint(
+        err_console.print(
             "[yellow]INFO:[/yellow] Pipfile found but virtual environment not active.",
-            file=sys.stderr,
         )
-        rprint(
+        err_console.print(
             "[yellow]INFO:[/yellow] Run using `pipenv run python validate_srt.py ...` for consistency.",
-            file=sys.stderr,
         )
 
-    all_issues = process_path(args.input_path, args)
+    all_issues = process_path(
+        args.input_path, args, console=console, err_console=err_console
+    )
     errors = [issue for issue in all_issues if issue.severity == "error"]
     warnings = [issue for issue in all_issues if issue.severity == "warning"]
     fail_on_warnings = args.warnings_as_errors and bool(warnings)
 
     if not errors and not fail_on_warnings:
         if warnings:
-            rprint("\n[yellow]Validation finished with warnings.[/yellow]")
+            console.print("\n[yellow]Validation finished with warnings.[/yellow]")
         else:
-            rprint("\n[bold green]Validation finished successfully.[/bold green]")
+            console.print(
+                "\n[bold green]Validation finished successfully.[/bold green]"
+            )
         sys.exit(0)
 
     if errors:
@@ -313,7 +342,7 @@ def main():
             else "\n[bold red]Validation finished with warnings (treated as errors).[/bold red]"
         )
 
-    rprint(message, file=sys.stderr)
+    err_console.print(message)
     sys.exit(1)
 
 

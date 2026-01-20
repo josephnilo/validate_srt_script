@@ -24,6 +24,7 @@ from validate_srt import (
     ValidationSummary,
     build_console,
     build_json_report,
+    normalize_input_path,
     process_srt_file,
     process_path,
     print_validation_errors,
@@ -781,6 +782,25 @@ def test_process_path_non_existent(tmp_path, default_args):
     assert len(all_errors) == 1
     assert all_errors[0].error_type == "Path Error"
     assert "not a valid file or directory" in all_errors[0].message
+
+
+def test_normalize_input_path_unwraps_quotes(tmp_path):
+    p = tmp_path / "quoted.srt"
+    p.write_text(
+        "1\n00:00:01,000 --> 00:00:02,000\nHello\n",
+        encoding="utf-8",
+    )
+    quoted = f"'{p}'"
+    assert normalize_input_path(quoted) == str(p)
+
+
+def test_process_path_accepts_quoted_input(tmp_path, valid_srt_content, default_args):
+    p = tmp_path / "valid_quoted.srt"
+    p.write_text(valid_srt_content, encoding="utf-8")
+    quoted = f"'{p}'"
+    default_args.input_path = quoted
+    all_errors = process_path(quoted, default_args)
+    assert not all_errors
 
 
 def test_process_path_directory_output(

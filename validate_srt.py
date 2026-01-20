@@ -45,6 +45,31 @@ def build_console(no_color: bool, file: Optional[TextIO] = None) -> Console:
     return Console(no_color=no_color, file=file, force_terminal=force_terminal)
 
 
+def _strip_wrapping_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
+def normalize_input_path(input_path: str) -> str:
+    path = input_path.strip()
+    expanded = os.path.expandvars(os.path.expanduser(path))
+    if os.path.exists(expanded):
+        return expanded
+
+    candidate = expanded
+    for _ in range(2):
+        unwrapped = _strip_wrapping_quotes(candidate)
+        if unwrapped == candidate:
+            break
+        expanded_unwrapped = os.path.expandvars(os.path.expanduser(unwrapped))
+        if os.path.exists(expanded_unwrapped):
+            return expanded_unwrapped
+        candidate = unwrapped
+
+    return expanded
+
+
 def validation_error_to_dict(
     error: ValidationError, include_content: bool
 ) -> dict[str, Optional[object]]:
@@ -229,6 +254,7 @@ def process_path(
     err_console: Optional[Console] = None,
 ) -> List[ValidationError]:
     """Processes a single file or all SRT files in a directory."""
+    input_path = normalize_input_path(input_path)
     console = console or Console()
     err_console = err_console or Console(file=sys.stderr)
     summary = summary or ValidationSummary()
@@ -362,6 +388,7 @@ def main():
         sys.exit(1)
 
     args = parser.parse_args()
+    args.input_path = normalize_input_path(args.input_path)
     if args.json:
         args.no_color = True
 

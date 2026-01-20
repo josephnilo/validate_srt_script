@@ -57,6 +57,14 @@ or
 pipenv run python validate_srt.py <path_to_directory>
 ```
 
+**Path Notes:**
+
+- If your path is already wrapped in quotes (for example, Automator inputs), the script will normalize it automatically.
+- If a path starts with `-`, use `--` before the path so it is not parsed as an option.
+  ```bash
+  pipenv run python validate_srt.py -- --leading-dash.srt
+  ```
+
 **Validate and Automatically Fix Issues:**
 
 ```bash

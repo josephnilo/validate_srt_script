@@ -25,6 +25,7 @@ from validate_srt import (
     build_console,
     build_json_report,
     normalize_input_path,
+    read_stdin_paths,
     process_srt_file,
     process_path,
     print_validation_errors,
@@ -803,6 +804,22 @@ def test_process_path_accepts_quoted_input(tmp_path, valid_srt_content, default_
     assert not all_errors
 
 
+def test_read_stdin_paths_filters_empty(monkeypatch):
+    class FakeStdin:
+        def __init__(self, data: str):
+            self._data = data
+
+        def isatty(self):
+            return False
+
+        def read(self):
+            return self._data
+
+    fake = FakeStdin(" \n/a.srt\n\n/b.srt\n")
+    monkeypatch.setattr("sys.stdin", fake)
+    assert read_stdin_paths() == ["/a.srt", "/b.srt"]
+
+
 def test_process_path_directory_output(
     tmp_path, valid_srt_content, overlapping_srt_content, default_args, capsys
 ):
@@ -968,7 +985,9 @@ def test_print_errors_critical():
     ]
     # Force color output for testing
     string_io = StringIO()
-    console = Console(file=string_io, force_terminal=True, color_system="truecolor")
+    console = Console(
+        file=string_io, force_terminal=True, color_system="truecolor", no_color=False
+    )
 
     print_validation_errors(errors, "test.srt", verbose=False, console=console)
 
@@ -982,7 +1001,9 @@ def test_print_errors_non_critical():
         ValidationError("test.srt", 1, 10, "Index Error", "Wrong index.", "10<-->11")
     ]
     string_io = StringIO()
-    console = Console(file=string_io, force_terminal=True, color_system="truecolor")
+    console = Console(
+        file=string_io, force_terminal=True, color_system="truecolor", no_color=False
+    )
 
     print_validation_errors(errors, "test.srt", verbose=False, console=console)
 

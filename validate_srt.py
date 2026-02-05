@@ -9,6 +9,7 @@ from typing import List, Optional, TextIO, Tuple
 import srt
 from rich.console import Console
 from rich.markup import escape as escape_markup
+from rich.text import Text
 
 from validator.models import ValidationError
 from validator.io import read_srt_content, write_srt
@@ -68,6 +69,16 @@ def normalize_input_path(input_path: str) -> str:
         candidate = unwrapped
 
     return expanded
+
+
+def read_stdin_paths() -> List[str]:
+    if sys.stdin is None or sys.stdin.isatty():
+        return []
+    data = sys.stdin.read()
+    if not data:
+        return []
+    data = data.replace("\0", "\n")
+    return [line.strip() for line in data.splitlines() if line.strip()]
 
 
 def validation_error_to_dict(
@@ -139,15 +150,17 @@ def print_validation_errors(
             else "File-level"
         )
 
-        label = escape_markup(f"[{sub_info} ({line_info})]")
-        message = escape_markup(error.message)
-        console.print(f"  - [{color}]{label} {error.error_type}: {message}[/{color}]")
+        label = f"[{sub_info} ({line_info})]"
+        message = error.message
+        line = Text("  - ")
+        line.append(f"{label} {error.error_type}: {message}", style=color)
+        console.print(line)
         if error.content and verbose:
             content_preview = error.content.replace("\n", " ")
-            content_label = escape_markup(
-                f"Content: {content_preview[:100]}{'...' if len(content_preview) > 100 else ''}"
-            )
-            console.print(f"    [{color}]{content_label}[/{color}]")
+            content_label = f"Content: {content_preview[:100]}{'...' if len(content_preview) > 100 else ''}"
+            content_line = Text("    ")
+            content_line.append(content_label, style=color)
+            console.print(content_line)
     console.print("[bold]--- End Errors ---[/bold]")
 
 
@@ -252,6 +265,7 @@ def process_path(
     summary: Optional[ValidationSummary] = None,
     console: Optional[Console] = None,
     err_console: Optional[Console] = None,
+    print_summary: bool = True,
 ) -> List[ValidationError]:
     """Processes a single file or all SRT files in a directory."""
     input_path = normalize_input_path(input_path)
@@ -316,13 +330,14 @@ def process_path(
 
         console.print("")
 
-    console.print("\n[bold]--- Validation Summary ---[/bold]")
-    console.print(f"Files Processed: {summary.files_processed}")
-    console.print(f"Files with Errors: {summary.files_with_errors}")
-    console.print(f"Files with Warnings: {summary.files_with_warnings}")
-    if args.fix:
-        console.print(f"Files Modified by Fixing: {summary.files_fixed}")
-    console.print("[bold]--- End Summary ---[/bold]")
+    if print_summary:
+        console.print("\n[bold]--- Validation Summary ---[/bold]")
+        console.print(f"Files Processed: {summary.files_processed}")
+        console.print(f"Files with Errors: {summary.files_with_errors}")
+        console.print(f"Files with Warnings: {summary.files_with_warnings}")
+        if args.fix:
+            console.print(f"Files Modified by Fixing: {summary.files_fixed}")
+        console.print("[bold]--- End Summary ---[/bold]")
 
     return all_errors
 
@@ -332,7 +347,9 @@ def main():
         description="Validate and optionally fix SRT subtitle files."
     )
     parser.add_argument(
-        "input_path", help="Path to the SRT file or directory containing SRT files."
+        "input_path",
+        nargs="?",
+        help="Path to the SRT file or directory containing SRT files.",
     )
     parser.add_argument(
         "--fix",
@@ -383,18 +400,63 @@ def main():
         help="Disable colorized output (also respects NO_COLOR).",
     )
 
-    if len(sys.argv) == 1:
+    args = parser.parse_args()
+    stdin_paths: List[str] = []
+    if not args.input_path:
+        stdin_paths = read_stdin_paths()
+        if len(stdin_paths) == 1:
+            args.input_path = stdin_paths[0]
+
+    if not args.input_path and not stdin_paths:
         parser.print_help(sys.stderr)
         sys.exit(1)
 
-    args = parser.parse_args()
-    args.input_path = normalize_input_path(args.input_path)
+    if args.input_path:
+        args.input_path = normalize_input_path(args.input_path)
     if args.json:
         args.no_color = True
 
         null_stream = io.StringIO()
         console = build_console(True, file=null_stream)
         err_console = build_console(True, file=null_stream)
+        if stdin_paths and not args.input_path:
+            reports = []
+            all_issues: List[ValidationError] = []
+            for path in stdin_paths:
+                per_summary = ValidationSummary()
+                issues = process_path(
+                    path,
+                    args,
+                    summary=per_summary,
+                    console=console,
+                    err_console=err_console,
+                    print_summary=False,
+                )
+                reports.append(
+                    build_json_report(
+                        input_path=path,
+                        issues=issues,
+                        summary=per_summary,
+                        warnings_as_errors=args.warnings_as_errors,
+                        fail_on_warnings=False,
+                        fix=args.fix,
+                        verbose=args.verbose,
+                        exit_code=0,
+                    )
+                )
+                all_issues.extend(issues)
+
+            errors = [issue for issue in all_issues if issue.severity == "error"]
+            warnings = [issue for issue in all_issues if issue.severity == "warning"]
+            fail_on_warnings = args.warnings_as_errors and bool(warnings)
+            exit_code = 0 if not errors and not fail_on_warnings else 1
+            for report in reports:
+                report["exit_code"] = exit_code
+                report["fail_on_warnings"] = fail_on_warnings
+
+            print(json.dumps(reports))
+            sys.exit(exit_code)
+
         summary = ValidationSummary()
 
         all_issues = process_path(
@@ -433,9 +495,32 @@ def main():
             "[yellow]INFO:[/yellow] Run using `pipenv run python validate_srt.py ...` for consistency.",
         )
 
-    all_issues = process_path(
-        args.input_path, args, console=console, err_console=err_console
-    )
+    if stdin_paths and not args.input_path:
+        summary = ValidationSummary()
+        all_issues: List[ValidationError] = []
+        for path in stdin_paths:
+            all_issues.extend(
+                process_path(
+                    path,
+                    args,
+                    summary=summary,
+                    console=console,
+                    err_console=err_console,
+                    print_summary=False,
+                )
+            )
+
+        console.print("\n[bold]--- Validation Summary ---[/bold]")
+        console.print(f"Files Processed: {summary.files_processed}")
+        console.print(f"Files with Errors: {summary.files_with_errors}")
+        console.print(f"Files with Warnings: {summary.files_with_warnings}")
+        if args.fix:
+            console.print(f"Files Modified by Fixing: {summary.files_fixed}")
+        console.print("[bold]--- End Summary ---[/bold]")
+    else:
+        all_issues = process_path(
+            args.input_path, args, console=console, err_console=err_console
+        )
     errors = [issue for issue in all_issues if issue.severity == "error"]
     warnings = [issue for issue in all_issues if issue.severity == "warning"]
     fail_on_warnings = args.warnings_as_errors and bool(warnings)

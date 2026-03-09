@@ -32,6 +32,17 @@ CRITICAL_ERROR_TYPES = {
     "Path Error",
 }
 
+WARNING_LEVEL_MINOR = "minor"
+WARNING_LEVEL_MAJOR = "major"
+WARNING_LEVELS = {WARNING_LEVEL_MINOR, WARNING_LEVEL_MAJOR}
+
+STYLE_BREAKING_ERROR = "bold red"
+STYLE_ERROR = "yellow"
+STYLE_WARNING_MAJOR = "bold yellow"
+STYLE_WARNING_MINOR = "yellow"
+
+TIME_OVERLAP_MESSAGE_FRAGMENT = "Overlaps with previous subtitle"
+
 
 @dataclass
 class ValidationSummary:
@@ -81,6 +92,35 @@ def read_stdin_paths() -> List[str]:
     return [line.strip() for line in data.splitlines() if line.strip()]
 
 
+def warning_level_for(error: ValidationError) -> Optional[str]:
+    if error.severity != "warning":
+        return None
+    if error.warning_level in WARNING_LEVELS:
+        return error.warning_level
+    # Backward-compatible default for warning entries without explicit level.
+    return WARNING_LEVEL_MAJOR
+
+
+def is_breaking_error(error: ValidationError) -> bool:
+    if error.error_type in CRITICAL_ERROR_TYPES:
+        return True
+    return (
+        error.error_type == "Timecode Error"
+        and TIME_OVERLAP_MESSAGE_FRAGMENT in error.message
+    )
+
+
+def issue_style_and_label(error: ValidationError) -> Tuple[str, str]:
+    if error.severity == "warning":
+        level = warning_level_for(error)
+        if level == WARNING_LEVEL_MINOR:
+            return STYLE_WARNING_MINOR, "MINOR WARNING"
+        return STYLE_WARNING_MAJOR, "MAJOR WARNING"
+    if is_breaking_error(error):
+        return STYLE_BREAKING_ERROR, "BREAKING ERROR"
+    return STYLE_ERROR, "ERROR"
+
+
 def validation_error_to_dict(
     error: ValidationError, include_content: bool
 ) -> dict[str, Optional[object]]:
@@ -91,8 +131,9 @@ def validation_error_to_dict(
         "error_type": error.error_type,
         "message": error.message,
         "severity": error.severity,
+        "warning_level": warning_level_for(error),
         "content": error.content if include_content else None,
-        "is_breaking": error.error_type in CRITICAL_ERROR_TYPES,
+        "is_breaking": is_breaking_error(error),
     }
 
 
@@ -127,6 +168,40 @@ def build_json_report(
     }
 
 
+def print_exit_summary_to_stderr(
+    *,
+    error_count: int,
+    warning_count: int,
+    fail_on_warnings: bool,
+    fix: bool,
+) -> None:
+    if error_count > 0:
+        if fix:
+            print("Fixing attempted, but errors remain.", file=sys.stderr)
+        else:
+            print("Validation finished with errors.", file=sys.stderr)
+        return
+
+    if fail_on_warnings:
+        if fix:
+            print(
+                "Fixing finished with warnings (treated as errors).",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "Validation finished with warnings (treated as errors).",
+                file=sys.stderr,
+            )
+        return
+
+    if warning_count > 0:
+        print("Validation finished with warnings.", file=sys.stderr)
+        return
+
+    print("Validation finished successfully.", file=sys.stderr)
+
+
 def print_validation_errors(
     errors: List[ValidationError],
     file_path: str,
@@ -140,8 +215,7 @@ def print_validation_errors(
     console.print(f"[bold]{header} [cyan]{escape_markup(file_path)}[/cyan]:[/bold]")
 
     for error in errors:
-        is_breaking = error.error_type in CRITICAL_ERROR_TYPES
-        color = "bold red" if is_breaking else "yellow"
+        color, issue_label = issue_style_and_label(error)
 
         line_info = f"L{error.line_number}" if error.line_number else "N/A"
         sub_info = (
@@ -153,7 +227,10 @@ def print_validation_errors(
         label = f"[{sub_info} ({line_info})]"
         message = error.message
         line = Text("  - ")
-        line.append(f"{label} {error.error_type}: {message}", style=color)
+        line.append(
+            f"{label} [{issue_label}] {error.error_type}: {message}",
+            style=color,
+        )
         console.print(line)
         if error.content and verbose:
             content_preview = error.content.replace("\n", " ")
@@ -353,8 +430,9 @@ def main():
     )
     parser.add_argument(
         "--fix",
-        action="store_true",
-        help="Attempt to automatically fix detected issues.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Automatically fix detected issues (default: enabled). Use --no-fix to disable.",
     )
     parser.add_argument(
         "--max-chars-per-line",
@@ -455,6 +533,13 @@ def main():
                 report["fail_on_warnings"] = fail_on_warnings
 
             print(json.dumps(reports))
+            if exit_code != 0:
+                print_exit_summary_to_stderr(
+                    error_count=len(errors),
+                    warning_count=len(warnings),
+                    fail_on_warnings=fail_on_warnings,
+                    fix=args.fix,
+                )
             sys.exit(exit_code)
 
         summary = ValidationSummary()
@@ -482,6 +567,13 @@ def main():
             exit_code=exit_code,
         )
         print(json.dumps(report))
+        if exit_code != 0:
+            print_exit_summary_to_stderr(
+                error_count=len(errors),
+                warning_count=len(warnings),
+                fail_on_warnings=fail_on_warnings,
+                fix=args.fix,
+            )
         sys.exit(exit_code)
 
     console = build_console(args.no_color)

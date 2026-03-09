@@ -25,10 +25,12 @@ from validate_srt import (
     build_console,
     build_json_report,
     normalize_input_path,
+    print_exit_summary_to_stderr,
     read_stdin_paths,
     process_srt_file,
     process_path,
     print_validation_errors,
+    validation_error_to_dict,
     DEFAULT_MAX_CHARS_PER_LINE,
     DEFAULT_MAX_LINES_PER_SUB,
     DEFAULT_MIN_SUB_DURATION_MS,
@@ -546,6 +548,8 @@ def test_validate_too_many_lines(too_many_lines_srt_content, default_args):
     assert errors[0].error_type == "Format Error"
     assert "maximum lines" in errors[0].message
     assert errors[0].subtitle_index == 1
+    assert errors[0].severity == "warning"
+    assert errors[0].warning_level == "major"
 
 
 def test_validate_too_long_line(too_long_line_srt_content, default_args):
@@ -562,6 +566,7 @@ def test_validate_too_long_line(too_long_line_srt_content, default_args):
     assert "maximum characters" in errors[0].message
     assert errors[0].subtitle_index == 1
     assert errors[0].severity == "warning"
+    assert errors[0].warning_level == "minor"
     assert errors[0].line_number == 3
 
 
@@ -847,7 +852,7 @@ def test_process_path_directory_output(
     assert "Errors found in" in stdout
     assert "[Sub:2 (L5)]" in stdout  # Check subtitle/line info marker
     assert "Timecode Error" in stdout  # Check error type
-    assert "Overlaps with previous subtitle" in stdout  # Check error message fragment
+    assert "Overlaps with previous" in stdout  # Check error message fragment
     assert "Content:" not in stdout  # Verbose content still shouldn't be there
     assert "--- End Errors ---" in stdout
     assert "--- Validation Summary ---" in stdout
@@ -870,7 +875,7 @@ def test_process_path_specific_file_output(
     captured = capsys.readouterr()
     stdout = captured.out
 
-    # Assert that the error details ARE printed
+    # Assert that issue details are printed
     # We check for a substring now, as rich may add formatting
     assert "Errors found in" in stdout
     assert "Exceeds maximum lines" in stdout
@@ -930,7 +935,7 @@ def test_argparse_defaults():
     parser = argparse.ArgumentParser()
     # Simplified setup just to test default values
     parser.add_argument("input_path")
-    parser.add_argument("--fix", action="store_true")
+    parser.add_argument("--fix", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--max-chars-per-line", type=int, default=DEFAULT_MAX_CHARS_PER_LINE
     )
@@ -947,7 +952,7 @@ def test_argparse_defaults():
 
     args = parser.parse_args(["dummy_path"])
     assert args.input_path == "dummy_path"
-    assert args.fix is False
+    assert args.fix is True
     assert args.max_chars_per_line == DEFAULT_MAX_CHARS_PER_LINE
     assert args.max_lines_per_sub == DEFAULT_MAX_LINES_PER_SUB
     assert args.min_duration_ms == DEFAULT_MIN_SUB_DURATION_MS
@@ -959,9 +964,17 @@ def test_argparse_fix_flag():
     # Simulate parsing with --fix flag
     parser = argparse.ArgumentParser()
     parser.add_argument("input_path")
-    parser.add_argument("--fix", action="store_true")
+    parser.add_argument("--fix", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args(["dummy_path", "--fix"])
     assert args.fix is True
+
+
+def test_argparse_no_fix_flag():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input_path")
+    parser.add_argument("--fix", action=argparse.BooleanOptionalAction, default=True)
+    args = parser.parse_args(["dummy_path", "--no-fix"])
+    assert args.fix is False
 
 
 def test_argparse_custom_values():
@@ -996,7 +1009,7 @@ def test_print_errors_critical():
 
 
 def test_print_errors_non_critical():
-    """Test if non-critical errors are printed in yellow."""
+    """Test if non-critical errors are printed as yellow errors."""
     errors = [
         ValidationError("test.srt", 1, 10, "Index Error", "Wrong index.", "10<-->11")
     ]
@@ -1009,7 +1022,66 @@ def test_print_errors_non_critical():
 
     output = string_io.getvalue()
     assert "\x1b[33m" in output  # Check for yellow color ANSI escape code
-    assert "\x1b[1;31m" not in output  # Ensure red is not present
+    assert "[ERROR]" in output
+    assert "[BREAKING ERROR]" not in output
+
+
+def test_print_overlap_error_is_breaking_red():
+    errors = [
+        ValidationError(
+            "test.srt",
+            2,
+            5,
+            "Timecode Error",
+            "Overlaps with previous subtitle (Ends: 0:00:03.500000, Starts: 0:00:03).",
+            "",
+        )
+    ]
+    string_io = StringIO()
+    console = Console(
+        file=string_io, force_terminal=True, color_system="truecolor", no_color=False
+    )
+
+    print_validation_errors(errors, "test.srt", verbose=False, console=console)
+
+    output = string_io.getvalue()
+    assert "\x1b[1;31m" in output
+    assert "[BREAKING ERROR]" in output
+
+
+def test_print_warning_levels_minor_and_major():
+    errors = [
+        ValidationError(
+            "test.srt",
+            1,
+            3,
+            "Format Error",
+            "Line exceeds maximum characters.",
+            "line",
+            severity="warning",
+            warning_level="minor",
+        ),
+        ValidationError(
+            "test.srt",
+            1,
+            3,
+            "Format Error",
+            "Exceeds maximum lines per subtitle.",
+            "line 1\nline 2\nline 3",
+            severity="warning",
+            warning_level="major",
+        ),
+    ]
+    string_io = StringIO()
+    console = Console(
+        file=string_io, force_terminal=True, color_system="truecolor", no_color=False
+    )
+
+    print_validation_errors(errors, "test.srt", verbose=False, console=console)
+
+    output = string_io.getvalue()
+    assert "[MINOR WARNING]" in output
+    assert "[MAJOR WARNING]" in output
 
 
 def test_print_errors_no_color():
@@ -1040,6 +1112,7 @@ def test_build_json_report_counts():
             "Too long.",
             "y",
             severity="warning",
+            warning_level="minor",
         ),
     ]
     report = build_json_report(
@@ -1057,6 +1130,30 @@ def test_build_json_report_counts():
     assert report["error_count"] == 1
     assert report["warning_count"] == 1
     assert report["issues"][0]["content"] is None
+    assert report["issues"][1]["warning_level"] == "minor"
+
+
+def test_validation_error_to_dict_marks_overlap_as_breaking():
+    issue = ValidationError(
+        "x.srt",
+        2,
+        5,
+        "Timecode Error",
+        "Overlaps with previous subtitle (Ends: 0:00:03.500000, Starts: 0:00:03).",
+    )
+    serialized = validation_error_to_dict(issue, include_content=False)
+    assert serialized["is_breaking"] is True
+
+
+def test_print_exit_summary_to_stderr_for_nonzero(capsys):
+    print_exit_summary_to_stderr(
+        error_count=1,
+        warning_count=0,
+        fail_on_warnings=False,
+        fix=False,
+    )
+    captured = capsys.readouterr()
+    assert "Validation finished with errors." in captured.err
 
 
 # -- I/O Function Tests --

@@ -264,6 +264,8 @@ def validate_srt_content(
                         "Format Error",
                         f"Exceeds maximum lines per subtitle ({len(lines)} > {max_lines_per_sub}).",
                         sub.content,
+                        severity="warning",
+                        warning_level="major",
                     )
                 )
 
@@ -281,6 +283,7 @@ def validate_srt_content(
                             f"Line exceeds maximum characters ({len(line_no_tags)} > {max_chars_per_line}).",
                             line,
                             severity="warning",
+                            warning_level="minor",
                         )
                     )
 

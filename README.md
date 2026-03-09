@@ -1,6 +1,6 @@
 # SRT Validator and Fixer
 
-A Python script to validate SubRip (`.srt`) subtitle files against common formatting and timing rules, with an option to automatically fix certain issues.
+A Python script to validate SubRip (`.srt`) subtitle files against common formatting and timing rules, while automatically fixing certain issues by default.
 
 ## Features
 
@@ -15,14 +15,17 @@ A Python script to validate SubRip (`.srt`) subtitle files against common format
         *   Detects empty subtitle content blocks.
     *   Performs a basic check for unclosed common HTML tags (`<i>`, `<b>`, `<u>`, `<font>`).
     *   Handles SRT files with or without a Byte Order Mark (BOM).
-*   **Optional Auto-Fixing (`--fix`):**
+*   **Auto-Fixing (enabled by default):**
     *   Corrects sequential numbering.
     *   Adjusts overlapping timecodes (shifts the start time of the overlapping subtitle).
     *   Fixes basic formatting issues (removes carriage returns `\r`, collapses multiple blank lines, trims leading/trailing whitespace).
     *   Re-validates after fixing and fails if errors remain.
+    *   Use `--no-fix` to run validation without modifying files.
 *   **Flexible Input:** Processes a single `.srt` file or recursively scans an entire directory.
 *   **Configurable:** Validation parameters (line length, line count, duration limits) can be adjusted via command-line arguments.
-*   **Clear Reporting:** Lists all validation errors found, including file path, subtitle index, and error type. Critical, unfixable errors are highlighted in red.
+*   **Clear Reporting:** Lists all validation issues found, including file path, subtitle index, and error type.
+    *   Breaking errors (including timecode overlaps) are highlighted in red.
+    *   Warnings are split into `MAJOR WARNING` and `MINOR WARNING` with distinct colors.
 *   **Standard Exit Codes:** Returns exit code `0` when no errors are found (warnings do not fail by default) and `1` when errors are found. Use `--warnings-as-errors` to make warnings fail.
 
 ## Requirements
@@ -47,7 +50,7 @@ A Python script to validate SubRip (`.srt`) subtitle files against common format
 
 Always run the script using `pipenv run` to ensure it uses the correct virtual environment and dependencies.
 
-**Basic Validation:**
+**Validate and Fix by Default:**
 
 ```bash
 pipenv run python validate_srt.py <path_to_file.srt>
@@ -65,12 +68,13 @@ pipenv run python validate_srt.py <path_to_directory>
   pipenv run python validate_srt.py -- --leading-dash.srt
   ```
 
-**Validate and Automatically Fix Issues:**
+*Note: Fixing modifies the `.srt` files in place. Make backups if necessary.*
+
+**Validation Only (No File Changes):**
 
 ```bash
-pipenv run python validate_srt.py --fix <path_to_file_or_directory>
+pipenv run python validate_srt.py --no-fix <path_to_file_or_directory>
 ```
-*Note: Fixing modifies the `.srt` files in place. Make backups if necessary.*
 
 **Using Custom Validation Parameters:**
 
@@ -103,6 +107,10 @@ pipenv run python validate_srt.py --json <path>
 ```
 
 Use `--verbose` to include issue content in the JSON output.
+
+JSON issue entries also include:
+- `is_breaking`: `true` for breaking errors (including timecode overlap errors).
+- `warning_level`: `major` or `minor` for warning issues.
 
 **Get Help:**
 

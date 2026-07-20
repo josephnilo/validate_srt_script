@@ -212,7 +212,10 @@ def print_validation_errors(
     console = console or Console()
     has_errors = any(error.severity == "error" for error in errors)
     header = "Errors found in" if has_errors else "Warnings found in"
-    console.print(f"[bold]{header} [cyan]{escape_markup(file_path)}[/cyan]:[/bold]")
+    console.print(
+        f"[bold]{header} [cyan]{escape_markup(file_path)}[/cyan]:[/bold]",
+        soft_wrap=True,
+    )
 
     for error in errors:
         color, issue_label = issue_style_and_label(error)
@@ -282,7 +285,10 @@ def process_srt_file(
     )
 
     if args.fix and has_errors and not has_blocking_errors:
-        console.print(f"Attempting to fix [cyan]{escape_markup(file_path)}[/cyan]...")
+        console.print(
+            f"Attempting to fix [cyan]{escape_markup(file_path)}[/cyan]...",
+            soft_wrap=True,
+        )
         try:
             subtitles_to_fix = list(srt.parse(content))
             fixed_subtitles, fixes_applied = fix_srt_subtitles(subtitles_to_fix)
@@ -292,7 +298,8 @@ def process_srt_file(
                     validation_errors.append(write_error)
                 else:
                     console.print(
-                        f"Fixes applied ([green]{', '.join(fixes_applied)}[/green]) to: [cyan]{escape_markup(file_path)}[/cyan]"
+                        f"Fixes applied ([green]{', '.join(fixes_applied)}[/green]) to: [cyan]{escape_markup(file_path)}[/cyan]",
+                        soft_wrap=True,
                     )
                     fixed_content, reread_error = read_srt_content(file_path)
                     if reread_error:
@@ -317,7 +324,8 @@ def process_srt_file(
                     )
             else:
                 console.print(
-                    f"No automatic fixes applied for: [cyan]{escape_markup(file_path)}[/cyan]"
+                    f"No automatic fixes applied for: [cyan]{escape_markup(file_path)}[/cyan]",
+                    soft_wrap=True,
                 )
         except Exception as e:
             fix_error = ValidationError(
@@ -331,6 +339,7 @@ def process_srt_file(
             validation_errors.append(fix_error)
             err_console.print(
                 f"Error during fixing process for [cyan]{escape_markup(file_path)}[/cyan]: {escape_markup(str(e))}",
+                soft_wrap=True,
             )
 
     return validation_errors, fixes_applied
@@ -358,9 +367,13 @@ def process_path(
         else:
             err_console.print(
                 f"[yellow]Skipping non-SRT file:[/yellow] {escape_markup(input_path)}",
+                soft_wrap=True,
             )
     elif os.path.isdir(input_path):
-        console.print(f"Processing directory: [cyan]{escape_markup(input_path)}[/cyan]")
+        console.print(
+            f"Processing directory: [cyan]{escape_markup(input_path)}[/cyan]",
+            soft_wrap=True,
+        )
         for root, _, files in os.walk(input_path):
             for file in sorted(files):
                 if file.lower().endswith(".srt"):
@@ -368,6 +381,7 @@ def process_path(
     else:
         err_console.print(
             f"[bold red]Error:[/bold red] Input path not found: {escape_markup(input_path)}",
+            soft_wrap=True,
         )
         return [
             ValidationError(
@@ -380,7 +394,10 @@ def process_path(
         ]
 
     for file_path in files_to_process:
-        console.print(f"--- Processing: [cyan]{escape_markup(file_path)}[/cyan] ---")
+        console.print(
+            f"--- Processing: [cyan]{escape_markup(file_path)}[/cyan] ---",
+            soft_wrap=True,
+        )
         summary.files_processed += 1
 
         errors, fixes = process_srt_file(
@@ -399,7 +416,8 @@ def process_path(
             print_validation_errors(errors, file_path, args.verbose, console=console)
         else:
             console.print(
-                f"[green]Validation passed for:[/green] {escape_markup(file_path)}"
+                f"[green]Validation passed for:[/green] {escape_markup(file_path)}",
+                soft_wrap=True,
             )
 
         if fixes:

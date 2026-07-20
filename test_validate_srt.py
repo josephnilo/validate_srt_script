@@ -836,7 +836,7 @@ def test_process_path_specific_file_output(
 
 
 def test_process_path_escapes_rich_markup_in_file_path(
-    tmp_path, overlapping_srt_content, default_args, capsys
+    tmp_path, overlapping_srt_content, default_args
 ):
     p = tmp_path / "weird[red]name.srt"
     p.write_text(overlapping_srt_content, encoding="utf-8")
@@ -845,8 +845,10 @@ def test_process_path_escapes_rich_markup_in_file_path(
     default_args.fix = False
     default_args.verbose = False
 
-    process_path(str(p), default_args)
-    stdout = capsys.readouterr().out
+    output = StringIO()
+    console = Console(file=output, force_terminal=False, width=40)
+    process_path(str(p), default_args, console=console)
+    stdout = output.getvalue()
 
     assert "weird[red]name.srt" in stdout
 

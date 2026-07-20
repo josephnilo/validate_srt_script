@@ -5,10 +5,10 @@ name = "pypi"
 
 [packages]
 rich = "*"
-pytest = "*"
 srt = "*"
 
 [dev-packages]
+pytest = "*"
 pre-commit = "*"
 ruff = "*"
 

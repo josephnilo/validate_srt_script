@@ -46,6 +46,26 @@ A Python script to validate SubRip (`.srt`) subtitle files against common format
     ```
     This will create a virtual environment and install the required `srt` library.
 
+## Development
+
+For tests and local quality checks, install dev dependencies:
+
+```bash
+pipenv install --dev
+```
+
+Run the test suite:
+
+```bash
+pipenv run pytest -q
+```
+
+Run the repo checks:
+
+```bash
+pipenv run pre-commit run --all-files
+```
+
 ## Usage
 
 Always run the script using `pipenv run` to ensure it uses the correct virtual environment and dependencies.

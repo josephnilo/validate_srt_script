@@ -5,17 +5,6 @@ from datetime import timedelta
 from rich.console import Console
 from io import StringIO
 
-# Remove old Pipenv environment check logic
-# def ensure_pipenv_environment():
-# ... (remove function) ...
-# if "PIPENV_ACTIVE" not in os.environ:
-#    ensure_pipenv_environment()
-
-# Remove old imports if they were left behind
-# import pytest
-# from validate_srt import validate_and_fix_srt, MalformedTimecodeError
-
-# Assume validate_srt.py is in the same directory or PYTHONPATH is set
 from validator.models import ValidationError
 from validator.rules import validate_srt_content
 from validator.fixer import fix_srt_subtitles
@@ -36,41 +25,6 @@ from validate_srt import (
     DEFAULT_MIN_SUB_DURATION_MS,
     DEFAULT_MAX_SUB_DURATION_MS,
 )
-
-# Remove old fixtures if they were left behind
-# @pytest.fixture
-# def valid_srt():
-# ... (remove fixture) ...
-# @pytest.fixture
-# def overlapping_srt():
-# ... (remove fixture) ...
-# @pytest.fixture
-# def missing_arrow_srt():
-# ... (remove fixture) ...
-# @pytest.fixture
-# def malformed_timecode_srt():
-# ... (remove fixture) ...
-# @pytest.fixture
-# def misnumbered_srt():
-# ... (remove fixture) ...
-# @pytest.fixture
-# def extra_blank_lines_srt():
-# ... (remove fixture) ...
-
-
-# Remove old tests
-# def test_valid_srt(valid_srt):
-# ... (remove test) ...
-# def test_overlapping_srt(overlapping_srt):
-# ... (remove test) ...
-# def test_missing_arrow_srt(missing_arrow_srt):
-# ... (remove test) ...
-# def test_malformed_timecode_srt(malformed_timecode_srt):
-# ... (remove test) ...
-# def test_misnumbered_srt(misnumbered_srt):
-# ... (remove test) ...
-# def test_extra_blank_lines_srt(extra_blank_lines_srt):
-# ... (remove test) ...
 
 
 # --- Fixtures for SRT content ---

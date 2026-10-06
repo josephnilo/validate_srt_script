@@ -6,3 +6,6 @@ result to that exact commit. It does not change application code, dependencies,
 tests, or the original CI recipe.
 
 Close this canary without merging after the independent test and cleanup checks.
+
+This additional temporary head was created while the local request timer was
+deliberately paused, to verify that restarting it discovers missed work.
